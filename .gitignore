@@ -76,8 +76,49 @@ appsettings.*.local.json
 # Aspire
 .aspire/
 
-# Secrets
+# Secrets and credentials
 secrets.json
 *.pfx
 *.key
 *.pem
+*.p12
+*.jks
+*.keystore
+**/appsettings.secrets.json
+**/appsettings.local.json
+**/usersecrets/
+.secret
+.secrets
+*.secret
+credentials.json
+service-account*.json
+
+# API keys and tokens
+*.apikey
+*.token
+.openai
+.azure-credentials
+
+# Certificate files
+*.cer
+*.crt
+*.der
+
+# SSH keys
+id_rsa
+id_rsa.pub
+id_ed25519
+id_ed25519.pub
+*.ppk
+
+# Docker secrets
+docker-compose.override.yml
+.docker/
+
+# Terraform state (if used for infrastructure)
+*.tfstate
+*.tfstate.*
+.terraform/
+
+# Local development overrides
+launchSettings.local.json
