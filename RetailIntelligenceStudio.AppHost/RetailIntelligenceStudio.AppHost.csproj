@@ -1,0 +1,20 @@
+<Project Sdk="Aspire.AppHost.Sdk/13.1.0">
+
+  <PropertyGroup>
+    <OutputType>Exe</OutputType>
+    <TargetFramework>net10.0</TargetFramework>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <Nullable>enable</Nullable>
+    <UserSecretsId>434501ce-b0b1-4de5-87a0-e6d024e2e0d5</UserSecretsId>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\RetailIntelligenceStudio.Server\RetailIntelligenceStudio.Server.csproj" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <!-- Aspire.Hosting.AppHost is automatically included by the SDK -->
+    <PackageReference Include="Aspire.Hosting.JavaScript" />
+    <PackageReference Include="Aspire.Hosting.NodeJs" />
+  </ItemGroup>
+</Project>

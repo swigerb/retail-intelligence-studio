@@ -1,0 +1,123 @@
+# Retail Intelligence Studio - Decision Evaluation Workflow
+# This workflow orchestrates 8 intelligence roles in a fan-out/fan-in pattern
+# to evaluate retail business decisions.
+
+name: decision_evaluation
+description: >
+  Evaluates retail business decisions using multiple intelligence roles.
+  Executes Decision Framer first, then runs 6 analysis roles in parallel,
+  and finally synthesizes results with Executive Recommendation.
+
+version: "1.0"
+
+inputs:
+  decision_id:
+    type: string
+    description: Unique identifier for the decision
+  decision_text:
+    type: string
+    description: The business decision to evaluate
+  persona:
+    type: string
+    description: Retail persona (Grocery, QuickServeRestaurant, SpecialtyRetail)
+  use_sample_data:
+    type: boolean
+    description: Whether to use persona-specific sample data
+  region:
+    type: string
+    description: Optional geographic region
+  category:
+    type: string
+    description: Optional product category
+  timeframe:
+    type: string
+    description: Optional timeframe for the decision
+
+# Workflow execution stages
+stages:
+  # Stage 1: Frame the decision
+  - name: framing
+    description: Clarify and structure the business decision
+    agents:
+      - name: decision_framer
+        display_name: Decision Framer
+        description: Clarifies the business question and produces a structured Decision Brief
+        timeout_seconds: 60
+
+  # Stage 2: Parallel analysis (fan-out)
+  - name: analysis
+    description: Run specialized analysis roles in parallel
+    parallel: true
+    agents:
+      - name: shopper_insights
+        display_name: Shopper Insights
+        description: Evaluates customer behavior, price sensitivity, loyalty, and basket impact
+        timeout_seconds: 90
+        depends_on: [decision_framer]
+
+      - name: demand_forecasting
+        display_name: Demand Forecasting
+        description: Estimates sales and volume impact with ranges and uncertainty
+        timeout_seconds: 90
+        depends_on: [decision_framer]
+
+      - name: inventory_readiness
+        display_name: Inventory Readiness
+        description: Assesses supply, lead times, and fulfillment feasibility
+        timeout_seconds: 90
+        depends_on: [decision_framer]
+
+      - name: margin_impact
+        display_name: Margin Impact
+        description: Evaluates profitability and financial trade-offs
+        timeout_seconds: 90
+        depends_on: [decision_framer]
+
+      - name: digital_merchandising
+        display_name: Digital Merchandising
+        description: Recommends execution strategy across digital and physical channels
+        timeout_seconds: 90
+        depends_on: [decision_framer]
+
+      - name: risk_compliance
+        display_name: Risk & Compliance
+        description: Flags legal, pricing, brand, or operational risks
+        timeout_seconds: 90
+        depends_on: [decision_framer]
+
+  # Stage 3: Synthesize recommendation (fan-in)
+  - name: synthesis
+    description: Synthesize all insights into final recommendation
+    agents:
+      - name: executive_recommendation
+        display_name: Executive Recommendation
+        description: Synthesizes all insights into a final recommendation
+        timeout_seconds: 120
+        depends_on:
+          - shopper_insights
+          - demand_forecasting
+          - inventory_readiness
+          - margin_impact
+          - digital_merchandising
+          - risk_compliance
+
+outputs:
+  recommendation:
+    type: object
+    description: Final executive recommendation with verdict, rationale, and actions
+  events:
+    type: array
+    description: All decision events generated during workflow execution
+  insights:
+    type: object
+    description: Aggregated insights from all intelligence roles
+
+# Workflow behavior configuration
+config:
+  max_duration_seconds: 600
+  retry_policy:
+    max_retries: 2
+    backoff_multiplier: 2
+  error_handling:
+    continue_on_partial_failure: true
+    emit_error_events: true
