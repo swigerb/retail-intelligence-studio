@@ -110,7 +110,8 @@ export function InsightsPanel({ events, isComplete }: InsightsPanelProps) {
                     </span>
                   </div>
                   <p className="text-sm text-ris-surface-700">{event.message}</p>
-                  {event.confidence !== undefined && (
+                  {/* Only show confidence for Completed phase events with valid confidence values */}
+                  {event.phase === AnalysisPhase.Completed && event.confidence != null && event.confidence > 0 && (
                     <div className="mt-2 text-xs text-ris-surface-500">
                       Confidence: {Math.round(event.confidence * 100)}%
                     </div>

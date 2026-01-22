@@ -8,27 +8,35 @@ namespace RetailIntelligenceStudio.Core.Stores;
 
 /// <summary>
 /// In-memory implementation of IDecisionStore for local development and demos.
-/// Supports real-time event streaming via Channels.
+/// Supports real-time event streaming via Channels with proper multi-subscriber support.
 /// </summary>
 public sealed class InMemoryDecisionStore : IDecisionStore
 {
     private readonly ConcurrentDictionary<string, List<DecisionEvent>> _events = new();
-    private readonly ConcurrentDictionary<string, Channel<DecisionEvent>> _channels = new();
+    private readonly ConcurrentDictionary<string, List<Channel<DecisionEvent>>> _subscribers = new();
     private readonly ConcurrentDictionary<string, bool> _completed = new();
     private readonly ConcurrentDictionary<string, string?> _errors = new();
+    
+    // Lock objects to ensure atomic operations between append and stream
+    private readonly ConcurrentDictionary<string, object> _locks = new();
 
     public Task AppendEventAsync(DecisionEvent decisionEvent, CancellationToken cancellationToken = default)
     {
+        var lockObj = _locks.GetOrAdd(decisionEvent.DecisionId, _ => new object());
         var events = _events.GetOrAdd(decisionEvent.DecisionId, _ => []);
-        
-        lock (events)
+        var subscribers = _subscribers.GetOrAdd(decisionEvent.DecisionId, _ => []);
+
+        // Atomic: add to list AND broadcast to ALL subscribers under same lock
+        lock (lockObj)
         {
             events.Add(decisionEvent);
+            
+            // Broadcast to all active subscribers
+            foreach (var channel in subscribers)
+            {
+                channel.Writer.TryWrite(decisionEvent);
+            }
         }
-
-        // Ensure channel exists and broadcast to any listeners
-        var channel = _channels.GetOrAdd(decisionEvent.DecisionId, _ => Channel.CreateUnbounded<DecisionEvent>());
-        channel.Writer.TryWrite(decisionEvent);
 
         return Task.CompletedTask;
     }
@@ -37,7 +45,8 @@ public sealed class InMemoryDecisionStore : IDecisionStore
     {
         if (_events.TryGetValue(decisionId, out var events))
         {
-            lock (events)
+            var lockObj = _locks.GetOrAdd(decisionId, _ => new object());
+            lock (lockObj)
             {
                 return Task.FromResult<IReadOnlyList<DecisionEvent>>(events.ToList());
             }
@@ -50,22 +59,35 @@ public sealed class InMemoryDecisionStore : IDecisionStore
         string decisionId, 
         [EnumeratorCancellation] CancellationToken cancellationToken = default)
     {
-        // Get or create the channel first - this ensures we don't miss any events
-        // that are written between when we take the snapshot and when we subscribe
-        var channel = _channels.GetOrAdd(decisionId, _ => Channel.CreateUnbounded<DecisionEvent>());
+        var lockObj = _locks.GetOrAdd(decisionId, _ => new object());
+        var subscribers = _subscribers.GetOrAdd(decisionId, _ => []);
+        var events = _events.GetOrAdd(decisionId, _ => []);
+        
+        // Create a dedicated channel for THIS subscriber
+        var subscriberChannel = Channel.CreateUnbounded<DecisionEvent>();
         
         // Track sequence numbers we've already yielded to avoid duplicates
         var yieldedSequences = new HashSet<int>();
         
-        // First, yield any existing events from the list
-        if (_events.TryGetValue(decisionId, out var existingEvents))
+        // Take snapshot AND register subscriber UNDER LOCK atomically
+        // This ensures no events are lost between snapshot and subscription
+        List<DecisionEvent> snapshot;
+        bool alreadyComplete;
+        lock (lockObj)
         {
-            List<DecisionEvent> snapshot;
-            lock (existingEvents)
+            snapshot = events.ToList();
+            alreadyComplete = _completed.TryGetValue(decisionId, out var c) && c;
+            
+            // Only subscribe if not already complete
+            if (!alreadyComplete)
             {
-                snapshot = existingEvents.ToList();
+                subscribers.Add(subscriberChannel);
             }
+        }
 
+        try
+        {
+            // Yield all existing events from snapshot
             foreach (var evt in snapshot)
             {
                 if (yieldedSequences.Add(evt.SequenceNumber))
@@ -73,69 +95,49 @@ public sealed class InMemoryDecisionStore : IDecisionStore
                     yield return evt;
                 }
             }
-        }
 
-        // If already complete, get the final list state and yield any missing events
-        if (_completed.TryGetValue(decisionId, out var isComplete) && isComplete)
-        {
-            // Re-read the list to get any events we missed
-            if (_events.TryGetValue(decisionId, out existingEvents))
+            // If already complete when we started, we have everything
+            if (alreadyComplete)
             {
-                List<DecisionEvent> finalSnapshot;
-                lock (existingEvents)
-                {
-                    finalSnapshot = existingEvents.ToList();
-                }
-                
-                foreach (var evt in finalSnapshot)
-                {
-                    if (yieldedSequences.Add(evt.SequenceNumber))
-                    {
-                        yield return evt;
-                    }
-                }
+                yield break;
             }
-            yield break;
-        }
 
-        // Subscribe to new events from the channel
-        // ReadAllAsync will complete when the channel writer is completed
-        await foreach (var evt in channel.Reader.ReadAllAsync(cancellationToken))
-        {
-            // Only yield events we haven't already yielded from the snapshot
-            if (yieldedSequences.Add(evt.SequenceNumber))
+            // Wait for new events from our dedicated subscriber channel
+            await foreach (var evt in subscriberChannel.Reader.ReadAllAsync(cancellationToken))
             {
-                yield return evt;
-            }
-        }
-        
-        // After channel completes, do a final check for any events in the list
-        // that might have been added but not yet read from the channel
-        if (_events.TryGetValue(decisionId, out existingEvents))
-        {
-            List<DecisionEvent> finalSnapshot;
-            lock (existingEvents)
-            {
-                finalSnapshot = existingEvents.ToList();
-            }
-            
-            foreach (var evt in finalSnapshot)
-            {
+                // Only yield events we haven't already yielded from the snapshot
                 if (yieldedSequences.Add(evt.SequenceNumber))
                 {
                     yield return evt;
                 }
             }
         }
+        finally
+        {
+            // Always unsubscribe when done (client disconnect, cancellation, or completion)
+            lock (lockObj)
+            {
+                subscribers.Remove(subscriberChannel);
+            }
+        }
     }
 
     public Task CompleteAsync(string decisionId, CancellationToken cancellationToken = default)
     {
-        _completed[decisionId] = true;
-
-        if (_channels.TryGetValue(decisionId, out var channel))
+        var lockObj = _locks.GetOrAdd(decisionId, _ => new object());
+        
+        lock (lockObj)
         {
-            channel.Writer.TryComplete();
+            _completed[decisionId] = true;
+
+            // Complete ALL subscriber channels
+            if (_subscribers.TryGetValue(decisionId, out var subscribers))
+            {
+                foreach (var channel in subscribers)
+                {
+                    channel.Writer.TryComplete();
+                }
+            }
         }
 
         return Task.CompletedTask;
@@ -143,12 +145,22 @@ public sealed class InMemoryDecisionStore : IDecisionStore
 
     public Task FailAsync(string decisionId, string errorMessage, CancellationToken cancellationToken = default)
     {
-        _completed[decisionId] = true;
-        _errors[decisionId] = errorMessage;
-
-        if (_channels.TryGetValue(decisionId, out var channel))
+        var lockObj = _locks.GetOrAdd(decisionId, _ => new object());
+        
+        lock (lockObj)
         {
-            channel.Writer.TryComplete(new InvalidOperationException(errorMessage));
+            _completed[decisionId] = true;
+            _errors[decisionId] = errorMessage;
+
+            // Complete ALL subscriber channels with error
+            if (_subscribers.TryGetValue(decisionId, out var subscribers))
+            {
+                var exception = new InvalidOperationException(errorMessage);
+                foreach (var channel in subscribers)
+                {
+                    channel.Writer.TryComplete(exception);
+                }
+            }
         }
 
         return Task.CompletedTask;

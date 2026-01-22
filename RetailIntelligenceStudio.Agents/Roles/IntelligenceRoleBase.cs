@@ -79,7 +79,9 @@ public abstract class IntelligenceRoleBase : IIntelligenceRole
 
         // Process streaming response using AIAgent.RunStreamingAsync()
         var responseBuilder = new StringBuilder();
+        var insightBuilder = new StringBuilder(); // Accumulates text for meaningful insights
         var tokenCount = 0;
+        const int MinInsightLength = 50; // Minimum chars before emitting an insight
         
         try
         {
@@ -92,14 +94,34 @@ public abstract class IntelligenceRoleBase : IIntelligenceRole
                 if (!string.IsNullOrEmpty(update.Text))
                 {
                     responseBuilder.Append(update.Text);
+                    insightBuilder.Append(update.Text);
                     tokenCount += update.Text.Split(' ', StringSplitOptions.RemoveEmptyEntries).Length;
 
-                    // Queue intermediate insights periodically (on sentence boundaries)
-                    if (responseBuilder.Length > 0 && 
-                        (update.Text.Contains('.') || update.Text.Contains('\n')))
+                    // Queue intermediate insights when we have a complete sentence of meaningful length
+                    if (insightBuilder.Length >= MinInsightLength && 
+                        (update.Text.EndsWith('.') || update.Text.EndsWith('!') || update.Text.EndsWith('?') || update.Text.Contains("\n\n")))
                     {
-                        eventQueue.Enqueue(CreateEvent(decisionId, request.Persona, AnalysisPhase.Reporting,
-                            update.Text.Trim(), sequenceNumber++));
+                        var insightText = insightBuilder.ToString().Trim();
+                        // Extract the last complete sentence or paragraph for cleaner display
+                        var lastSentenceEnd = Math.Max(
+                            insightText.LastIndexOf(". ", StringComparison.Ordinal),
+                            Math.Max(insightText.LastIndexOf("! ", StringComparison.Ordinal),
+                                     insightText.LastIndexOf("? ", StringComparison.Ordinal)));
+                        
+                        if (lastSentenceEnd > MinInsightLength)
+                        {
+                            var cleanInsight = insightText[..(lastSentenceEnd + 1)].Trim();
+                            // Remove markdown formatting for cleaner display
+                            cleanInsight = cleanInsight.Replace("**", "").Replace("##", "").Trim();
+                            if (!string.IsNullOrWhiteSpace(cleanInsight))
+                            {
+                                eventQueue.Enqueue(CreateEvent(decisionId, request.Persona, AnalysisPhase.Reporting,
+                                    cleanInsight, sequenceNumber++));
+                            }
+                            // Keep the remainder for the next insight
+                            insightBuilder.Clear();
+                            insightBuilder.Append(insightText[(lastSentenceEnd + 1)..]);
+                        }
                     }
                 }
             }

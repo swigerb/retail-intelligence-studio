@@ -4,7 +4,6 @@ using Azure.Identity;
 using Microsoft.Agents.AI;
 using Microsoft.Extensions.AI;
 using Microsoft.Extensions.Logging;
-using OpenAI.Responses;
 
 namespace RetailIntelligenceStudio.Agents.Infrastructure;
 
@@ -20,12 +19,12 @@ public interface IAgentFactory
 }
 
 /// <summary>
-/// Factory implementation using Azure OpenAI Responses API.
+/// Factory implementation using Azure OpenAI Chat Completions API.
 /// </summary>
 public sealed class AzureOpenAIAgentFactory : IAgentFactory
 {
     private static readonly ActivitySource ActivitySource = new("RetailIntelligenceStudio.Agents");
-    private readonly ResponsesClient _responsesClient;
+    private readonly IChatClient _chatClient;
     private readonly ILoggerFactory _loggerFactory;
     private readonly ILogger<AzureOpenAIAgentFactory> _logger;
     private readonly string _deploymentName;
@@ -46,7 +45,9 @@ public sealed class AzureOpenAIAgentFactory : IAgentFactory
             new Uri(endpoint),
             new DefaultAzureCredential());
 
-        _responsesClient = client.GetResponsesClient(deploymentName);
+        // Use Chat Completions API (supported by Azure OpenAI)
+        // NOT Responses API (OpenAI-only feature)
+        _chatClient = client.GetChatClient(deploymentName).AsIChatClient();
         
         _logger.LogInformation("Initialized Azure OpenAI agent factory with deployment: {DeploymentName}", deploymentName);
     }
@@ -60,7 +61,7 @@ public sealed class AzureOpenAIAgentFactory : IAgentFactory
         
         _logger.LogInformation("Creating Azure OpenAI agent: {AgentName} using deployment {Deployment}", name, _deploymentName);
         
-        return _responsesClient.AsAIAgent(
+        return _chatClient.AsAIAgent(
             name: name,
             instructions: instructions,
             loggerFactory: _loggerFactory);

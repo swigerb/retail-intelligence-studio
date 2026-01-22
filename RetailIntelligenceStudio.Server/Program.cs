@@ -207,13 +207,29 @@ api.MapGet("decisions/{decisionId}", async (string decisionId, IStateStore state
 })
 .WithName("GetDecision");
 
+// Debug endpoint: Get raw events from store  
+api.MapGet("decisions/{decisionId}/debug-events", async (string decisionId, IDecisionStore decisionStore, CancellationToken cancellationToken) =>
+{
+    var events = await decisionStore.GetEventsAsync(decisionId, cancellationToken);
+    var summary = events
+        .GroupBy(e => e.RoleName)
+        .Select(g => new { Role = g.Key, Count = g.Count(), Phases = g.Select(e => e.Phase.ToString()).Distinct() })
+        .ToList();
+    return Results.Ok(new { TotalEvents = events.Count, ByRole = summary, Events = events });
+})
+.WithName("DebugGetEvents");
+
 // Stream decision events via Server-Sent Events
 api.MapGet("decisions/{decisionId}/events", async (
     string decisionId,
     IDecisionStore decisionStore,
+    ILoggerFactory loggerFactory,
     HttpContext httpContext,
     CancellationToken cancellationToken) =>
 {
+    var logger = loggerFactory.CreateLogger("SSE");
+    logger.LogInformation("📡 SSE connection opened for decision {DecisionId}", decisionId);
+    
     httpContext.Response.Headers.ContentType = "text/event-stream";
     httpContext.Response.Headers.CacheControl = "no-cache";
     httpContext.Response.Headers.Connection = "keep-alive";
@@ -224,22 +240,37 @@ api.MapGet("decisions/{decisionId}/events", async (
         Converters = { new JsonStringEnumConverter() }
     };
 
+    var eventCount = 0;
+    var rolesSeen = new HashSet<string>();
+    
     try
     {
         await foreach (var evt in decisionStore.StreamEventsAsync(decisionId, cancellationToken))
         {
+            eventCount++;
+            rolesSeen.Add(evt.RoleName);
+            
             var json = JsonSerializer.Serialize(evt, jsonOptions);
             await httpContext.Response.WriteAsync($"data: {json}\n\n", cancellationToken);
             await httpContext.Response.Body.FlushAsync(cancellationToken);
+            
+            if (evt.Phase == AnalysisPhase.Completed)
+            {
+                logger.LogInformation("📤 SSE sent {Role} completed event (seq: {Seq})", evt.RoleName, evt.SequenceNumber);
+            }
         }
 
         // Send completion event
         await httpContext.Response.WriteAsync("data: {\"type\":\"complete\"}\n\n", cancellationToken);
         await httpContext.Response.Body.FlushAsync(cancellationToken);
+        
+        logger.LogInformation("📡 SSE completed for {DecisionId}: {EventCount} events, roles: {Roles}", 
+            decisionId, eventCount, string.Join(", ", rolesSeen));
     }
     catch (OperationCanceledException)
     {
-        // Client disconnected - this is expected
+        logger.LogInformation("📡 SSE client disconnected for {DecisionId} after {EventCount} events", 
+            decisionId, eventCount);
     }
 })
 .WithName("StreamDecisionEvents");

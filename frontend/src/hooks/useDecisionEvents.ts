@@ -45,28 +45,41 @@ export function useDecisionEvents(decisionId: string | null): UseDecisionEventsR
     eventSource.onopen = () => {
       setIsConnected(true);
       setError(null);
+      console.log('[useDecisionEvents] ✅ SSE connection opened');
     };
 
     eventSource.onmessage = (event) => {
       try {
         const data = JSON.parse(event.data);
-        console.log('[useDecisionEvents] Raw SSE data:', data);
         
         // Check for completion signal
         if (data.type === 'complete') {
+          console.log('[useDecisionEvents] 🏁 Received completion signal');
           setIsComplete(true);
           disconnect();
           return;
         }
 
         const decisionEvent = data as DecisionEvent;
-        console.log('[useDecisionEvents] Parsed event:', {
-          roleName: decisionEvent.roleName,
-          phase: decisionEvent.phase,
-          hasData: !!decisionEvent.data,
-          dataKeys: decisionEvent.data ? Object.keys(decisionEvent.data) : []
+        
+        // Log completed events prominently
+        if (decisionEvent.phase === 'Completed' || decisionEvent.phase === AnalysisPhase.Completed) {
+          console.log(`[useDecisionEvents] ✅ ${decisionEvent.roleName} COMPLETED`, {
+            phase: decisionEvent.phase,
+            confidence: decisionEvent.confidence,
+            seq: decisionEvent.sequenceNumber
+          });
+        }
+        
+        setEvents(prev => {
+          const newEvents = [...prev, decisionEvent];
+          // Log role summary periodically
+          if (newEvents.length % 50 === 0) {
+            const roles = [...new Set(newEvents.map(e => e.roleName))];
+            console.log(`[useDecisionEvents] 📊 ${newEvents.length} events, roles: ${roles.join(', ')}`);
+          }
+          return newEvents;
         });
-        setEvents(prev => [...prev, decisionEvent]);
 
         // Check if the workflow is complete
         if (decisionEvent.roleName === 'workflow' && 
@@ -75,7 +88,7 @@ export function useDecisionEvents(decisionId: string | null): UseDecisionEventsR
           disconnect();
         }
       } catch (e) {
-        console.error('Failed to parse event:', e);
+        console.error('[useDecisionEvents] ❌ Failed to parse event:', e, event.data);
       }
     };
 
