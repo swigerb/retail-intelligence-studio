@@ -132,6 +132,7 @@ public class DecisionResultTests
         return new PersonaContext
         {
             Persona = RetailPersona.Grocery,
+            Category = RetailCategory.FoodAndDining,
             DisplayName = "Grocery",
             Description = "Test",
             KeyCategories = ["Fresh"],
@@ -282,6 +283,7 @@ public class PersonaContextTests
         var context = new PersonaContext
         {
             Persona = RetailPersona.SpecialtyRetail,
+            Category = RetailCategory.SpecialtyAndFashion,
             DisplayName = "Specialty Retail",
             Description = "High-end retail focused on customer experience",
             KeyCategories = ["Core Assortment", "Limited Editions"],

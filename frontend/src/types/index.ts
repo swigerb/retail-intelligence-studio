@@ -1,9 +1,43 @@
 // Retail Intelligence Studio - TypeScript Types
 
+export enum RetailCategory {
+  FoodAndDining = 'FoodAndDining',
+  MassMarket = 'MassMarket',
+  SpecialtyAndFashion = 'SpecialtyAndFashion',
+  HomeAndAuto = 'HomeAndAuto',
+  HealthAndWellness = 'HealthAndWellness',
+  DigitalAndEmerging = 'DigitalAndEmerging'
+}
+
 export enum RetailPersona {
+  // Food & Dining
   Grocery = 'Grocery',
   QuickServeRestaurant = 'QuickServeRestaurant',
-  SpecialtyRetail = 'SpecialtyRetail'
+  ConvenienceStore = 'ConvenienceStore',
+
+  // Mass Market
+  BigBox = 'BigBox',
+  DiscountValue = 'DiscountValue',
+  WarehouseClub = 'WarehouseClub',
+
+  // Specialty & Fashion
+  SpecialtyRetail = 'SpecialtyRetail',
+  ApparelFootwear = 'ApparelFootwear',
+  LuxuryPremium = 'LuxuryPremium',
+  DepartmentStore = 'DepartmentStore',
+
+  // Home & Auto
+  HomeImprovement = 'HomeImprovement',
+  ConsumerElectronics = 'ConsumerElectronics',
+  Automotive = 'Automotive',
+
+  // Health & Wellness
+  PharmacyHealth = 'PharmacyHealth',
+
+  // Digital & Emerging
+  DirectToConsumer = 'DirectToConsumer',
+  Recommerce = 'Recommerce',
+  TravelRetail = 'TravelRetail'
 }
 
 export enum AnalysisPhase {
@@ -30,6 +64,7 @@ export enum RecommendationVerdict {
 
 export interface PersonaContext {
   persona: RetailPersona;
+  category: RetailCategory;
   displayName: string;
   description: string;
   keyCategories: string[];

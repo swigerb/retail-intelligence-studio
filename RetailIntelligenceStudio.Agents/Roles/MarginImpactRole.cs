@@ -49,6 +49,7 @@ public sealed class MarginImpactRole : IntelligenceRoleBase
             - Break-even volume analysis
             - Vendor funding opportunities
             - Total profit contribution outlook
+            - **Confidence: XX%** (your confidence in this financial analysis, 0-100%)
             
             Be precise with financial impacts. Highlight trade-offs clearly.
             """;

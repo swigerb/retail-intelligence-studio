@@ -14,25 +14,59 @@ public class PersonaCatalogTests
     }
 
     [Fact]
-    public void GetAllPersonas_ReturnsAllThreePersonas()
+    public void GetAllPersonas_ReturnsAllSeventeenPersonas()
     {
         // Act
         var personas = _sut.GetAllPersonas();
 
         // Assert
-        personas.Should().HaveCount(3);
+        personas.Should().HaveCount(17);
         personas.Select(p => p.Persona).Should().BeEquivalentTo(new[]
         {
+            // Food & Dining
             RetailPersona.Grocery,
             RetailPersona.QuickServeRestaurant,
-            RetailPersona.SpecialtyRetail
+            RetailPersona.ConvenienceStore,
+            // Mass Market
+            RetailPersona.BigBox,
+            RetailPersona.DiscountValue,
+            RetailPersona.WarehouseClub,
+            // Specialty & Fashion
+            RetailPersona.SpecialtyRetail,
+            RetailPersona.ApparelFootwear,
+            RetailPersona.LuxuryPremium,
+            RetailPersona.DepartmentStore,
+            // Home & Auto
+            RetailPersona.HomeImprovement,
+            RetailPersona.ConsumerElectronics,
+            RetailPersona.Automotive,
+            // Health & Wellness
+            RetailPersona.PharmacyHealth,
+            // Digital & Emerging
+            RetailPersona.DirectToConsumer,
+            RetailPersona.Recommerce,
+            RetailPersona.TravelRetail
         });
     }
 
     [Theory]
     [InlineData(RetailPersona.Grocery)]
     [InlineData(RetailPersona.QuickServeRestaurant)]
+    [InlineData(RetailPersona.ConvenienceStore)]
+    [InlineData(RetailPersona.BigBox)]
+    [InlineData(RetailPersona.DiscountValue)]
+    [InlineData(RetailPersona.WarehouseClub)]
     [InlineData(RetailPersona.SpecialtyRetail)]
+    [InlineData(RetailPersona.ApparelFootwear)]
+    [InlineData(RetailPersona.LuxuryPremium)]
+    [InlineData(RetailPersona.DepartmentStore)]
+    [InlineData(RetailPersona.HomeImprovement)]
+    [InlineData(RetailPersona.ConsumerElectronics)]
+    [InlineData(RetailPersona.Automotive)]
+    [InlineData(RetailPersona.PharmacyHealth)]
+    [InlineData(RetailPersona.DirectToConsumer)]
+    [InlineData(RetailPersona.Recommerce)]
+    [InlineData(RetailPersona.TravelRetail)]
     public void GetPersonaContext_ReturnsValidContext(RetailPersona persona)
     {
         // Act
@@ -64,7 +98,21 @@ public class PersonaCatalogTests
     [Theory]
     [InlineData(RetailPersona.Grocery)]
     [InlineData(RetailPersona.QuickServeRestaurant)]
+    [InlineData(RetailPersona.ConvenienceStore)]
+    [InlineData(RetailPersona.BigBox)]
+    [InlineData(RetailPersona.DiscountValue)]
+    [InlineData(RetailPersona.WarehouseClub)]
     [InlineData(RetailPersona.SpecialtyRetail)]
+    [InlineData(RetailPersona.ApparelFootwear)]
+    [InlineData(RetailPersona.LuxuryPremium)]
+    [InlineData(RetailPersona.DepartmentStore)]
+    [InlineData(RetailPersona.HomeImprovement)]
+    [InlineData(RetailPersona.ConsumerElectronics)]
+    [InlineData(RetailPersona.Automotive)]
+    [InlineData(RetailPersona.PharmacyHealth)]
+    [InlineData(RetailPersona.DirectToConsumer)]
+    [InlineData(RetailPersona.Recommerce)]
+    [InlineData(RetailPersona.TravelRetail)]
     public void GetSampleDecision_ReturnsNonEmptyString(RetailPersona persona)
     {
         // Act

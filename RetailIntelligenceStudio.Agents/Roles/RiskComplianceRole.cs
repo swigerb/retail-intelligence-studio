@@ -42,6 +42,7 @@ public sealed class RiskComplianceRole : IntelligenceRoleBase
             - Specific risk descriptions
             - Mitigation recommendations
             - Monitoring requirements
+            - **Confidence: XX%** (your confidence in this risk assessment, 0-100%)
             
             Be thorough but proportionate. Focus on material risks.
             """;

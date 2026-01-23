@@ -1,11 +1,12 @@
 import { describe, it, expect, vi } from 'vitest';
 import { render, screen, fireEvent } from '@testing-library/react';
 import { DecisionInput } from './DecisionInput';
-import { RetailPersona, PersonaContext } from '../types';
+import { RetailPersona, RetailCategory, PersonaContext } from '../types';
 
 const mockPersonas: PersonaContext[] = [
   {
     persona: RetailPersona.Grocery,
+    category: RetailCategory.FoodAndDining,
     displayName: 'Grocery Retail',
     description: 'Traditional grocery retail',
     keyCategories: ['Beverages', 'Fresh Produce', 'Frozen Foods'],
@@ -14,6 +15,7 @@ const mockPersonas: PersonaContext[] = [
   },
   {
     persona: RetailPersona.QuickServeRestaurant,
+    category: RetailCategory.FoodAndDining,
     displayName: 'Quick Serve Restaurant',
     description: 'Fast food and QSR',
     keyCategories: ['Burgers', 'Sides', 'Beverages'],

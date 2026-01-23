@@ -12,6 +12,12 @@ public sealed class PersonaContext
     public required RetailPersona Persona { get; init; }
 
     /// <summary>
+    /// The category grouping this persona belongs to.
+    /// Used for organizing personas in the UI.
+    /// </summary>
+    public required RetailCategory Category { get; init; }
+
+    /// <summary>
     /// Human-friendly display name for the persona.
     /// </summary>
     public required string DisplayName { get; init; }

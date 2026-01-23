@@ -49,6 +49,7 @@ public sealed class InventoryReadinessRole : IntelligenceRoleBase
             - Lead time considerations
             - Stock-out risk evaluation
             - Recommended safety stock adjustments
+            - **Confidence: XX%** (your confidence in this assessment, 0-100%)
             
             Focus on execution feasibility and operational risks.
             """;

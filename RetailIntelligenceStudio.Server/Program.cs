@@ -104,6 +104,7 @@ api.MapGet("personas", (IPersonaCatalog catalog) =>
         p.Persona,
         p.DisplayName,
         p.Description,
+        p.Category,
         p.KeyCategories,
         p.Channels,
         SampleDecisions = p.SampleDecisionTemplates

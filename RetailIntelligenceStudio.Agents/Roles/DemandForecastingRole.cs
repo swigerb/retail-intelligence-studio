@@ -49,6 +49,7 @@ public sealed class DemandForecastingRole : IntelligenceRoleBase
             - Volume projections
             - Key assumptions driving the forecast
             - Confidence intervals
+            - **Confidence: XX%** (your overall confidence in this forecast, 0-100%)
             
             Use precise numbers and ranges. Be transparent about uncertainty.
             """;

@@ -51,6 +51,7 @@ public sealed class DecisionFramerRole : IntelligenceRoleBase
             - Timeline
             - Success Criteria
             - Key Assumptions
+            - **Confidence: XX%** (your confidence level in this framing, 0-100%)
             
             Be concise, professional, and business-focused. Avoid technical jargon.
             """;

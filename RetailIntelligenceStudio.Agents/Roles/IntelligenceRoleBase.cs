@@ -198,13 +198,56 @@ public abstract class IntelligenceRoleBase : IIntelligenceRole
             .Take(5)
             .ToArray();
 
+        // Extract confidence from response (look for patterns like "Confidence: 85%" or "**Confidence:** 78%")
+        var confidence = ExtractConfidenceFromResponse(response);
+
         return new RoleInsight
         {
             RoleName = RoleName,
             Summary = lines.FirstOrDefault() ?? "Analysis complete.",
             KeyFindings = findings.Length > 0 ? findings : ["Analysis completed successfully."],
-            Confidence = 0.75 // Default confidence
+            Confidence = confidence
         };
+    }
+
+    /// <summary>
+    /// Extracts confidence value from AI response text.
+    /// Looks for patterns like "Confidence: 85%", "**Confidence:** 78%", "confidence level: 0.82"
+    /// </summary>
+    protected static double ExtractConfidenceFromResponse(string response)
+    {
+        // Pattern 1: "Confidence: XX%" or "**Confidence:** XX%"
+        var percentMatch = System.Text.RegularExpressions.Regex.Match(
+            response, 
+            @"[Cc]onfidence[:\s*]+(\d{1,3})%",
+            System.Text.RegularExpressions.RegexOptions.IgnoreCase);
+        
+        if (percentMatch.Success && int.TryParse(percentMatch.Groups[1].Value, out var percentValue))
+        {
+            return Math.Clamp(percentValue / 100.0, 0.0, 1.0);
+        }
+
+        // Pattern 2: "confidence: 0.XX" or "confidence level: 0.XX"
+        var decimalMatch = System.Text.RegularExpressions.Regex.Match(
+            response,
+            @"[Cc]onfidence[:\s\w]*?(\d?\.\d+)",
+            System.Text.RegularExpressions.RegexOptions.IgnoreCase);
+        
+        if (decimalMatch.Success && double.TryParse(decimalMatch.Groups[1].Value, out var decimalValue))
+        {
+            return Math.Clamp(decimalValue, 0.0, 1.0);
+        }
+
+        // Pattern 3: Look for "high confidence", "moderate confidence", "low confidence"
+        if (System.Text.RegularExpressions.Regex.IsMatch(response, @"\b(very\s+)?high\s+confidence\b", System.Text.RegularExpressions.RegexOptions.IgnoreCase))
+            return 0.90;
+        if (System.Text.RegularExpressions.Regex.IsMatch(response, @"\bmoderate\s+confidence\b", System.Text.RegularExpressions.RegexOptions.IgnoreCase))
+            return 0.70;
+        if (System.Text.RegularExpressions.Regex.IsMatch(response, @"\blow\s+confidence\b", System.Text.RegularExpressions.RegexOptions.IgnoreCase))
+            return 0.50;
+
+        // Default confidence if none found
+        return 0.75;
     }
 
     protected DecisionEvent CreateEvent(

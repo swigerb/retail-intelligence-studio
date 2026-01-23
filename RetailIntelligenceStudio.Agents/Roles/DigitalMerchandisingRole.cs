@@ -44,6 +44,7 @@ public sealed class DigitalMerchandisingRole : IntelligenceRoleBase
             - Placement and visibility strategy
             - Messaging and creative direction
             - Timing and phasing recommendations
+            - **Confidence: XX%** (your confidence in this strategy, 0-100%)
             
             Focus on actionable execution plans.
             """;

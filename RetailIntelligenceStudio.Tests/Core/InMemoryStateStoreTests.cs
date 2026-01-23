@@ -128,6 +128,7 @@ public class InMemoryStateStoreTests
         return new PersonaContext
         {
             Persona = RetailPersona.Grocery,
+            Category = RetailCategory.FoodAndDining,
             DisplayName = "Grocery Retail",
             Description = "Test description",
             KeyCategories = ["Fresh Produce", "Dairy"],

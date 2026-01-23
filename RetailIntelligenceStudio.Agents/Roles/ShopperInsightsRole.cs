@@ -48,7 +48,7 @@ public sealed class ShopperInsightsRole : IntelligenceRoleBase
             - Customer segment impact analysis
             - Expected behavioral changes
             - Loyalty and retention implications
-            - Confidence level (Low/Medium/High)
+            - **Confidence: XX%** (your overall confidence in this analysis, 0-100%)
             
             Be data-driven, specific, and business-focused.
             """;
