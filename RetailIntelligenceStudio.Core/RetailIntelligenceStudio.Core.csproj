@@ -7,8 +7,4 @@
     <RootNamespace>RetailIntelligenceStudio.Core</RootNamespace>
   </PropertyGroup>
 
-  <ItemGroup>
-    <PackageReference Include="System.Text.Json" />
-  </ItemGroup>
-
 </Project>

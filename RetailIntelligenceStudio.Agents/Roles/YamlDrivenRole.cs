@@ -1,9 +1,6 @@
 using System.Diagnostics;
 using System.Runtime.CompilerServices;
 using System.Text;
-using System.Text.Json;
-using Microsoft.Agents.AI;
-using Microsoft.Extensions.AI;
 using Microsoft.Extensions.Logging;
 using RetailIntelligenceStudio.Agents.Abstractions;
 using RetailIntelligenceStudio.Agents.Infrastructure;
@@ -12,26 +9,35 @@ using RetailIntelligenceStudio.Core.Models;
 namespace RetailIntelligenceStudio.Agents.Roles;
 
 /// <summary>
-/// Base class for intelligence roles providing common AI interaction patterns
-/// using Microsoft Agent Framework.
+/// YAML-driven intelligence role that loads its definition from configuration.
+/// Replaces hardcoded role implementations with versionable YAML definitions.
 /// </summary>
-public abstract class IntelligenceRoleBase : IIntelligenceRole
+public class YamlDrivenRole : IIntelligenceRole
 {
     private static readonly ActivitySource ActivitySource = new("RetailIntelligenceStudio.Agents");
-    protected readonly IAgentFactory AgentFactory;
-    protected readonly ILogger Logger;
+    
+    private readonly AgentDefinition _definition;
+    private readonly IAgentFactory _agentFactory;
+    private readonly IPromptTemplateEngine _templateEngine;
+    private readonly ILogger _logger;
 
-    public abstract string RoleName { get; }
-    public abstract string DisplayName { get; }
-    public abstract string Description { get; }
-    public abstract IReadOnlyList<string> FocusAreas { get; }
-    public abstract string OutputType { get; }
-    public abstract int WorkflowOrder { get; }
+    public string RoleName => _definition.Name;
+    public string DisplayName => _definition.DisplayName;
+    public string Description => _definition.Description;
+    public IReadOnlyList<string> FocusAreas => _definition.FocusAreas;
+    public string OutputType => _definition.OutputType;
+    public int WorkflowOrder => _definition.WorkflowOrder;
 
-    protected IntelligenceRoleBase(IAgentFactory agentFactory, ILogger logger)
+    public YamlDrivenRole(
+        AgentDefinition definition,
+        IAgentFactory agentFactory,
+        IPromptTemplateEngine templateEngine,
+        ILogger logger)
     {
-        AgentFactory = agentFactory;
-        Logger = logger;
+        _definition = definition ?? throw new ArgumentNullException(nameof(definition));
+        _agentFactory = agentFactory ?? throw new ArgumentNullException(nameof(agentFactory));
+        _templateEngine = templateEngine ?? throw new ArgumentNullException(nameof(templateEngine));
+        _logger = logger ?? throw new ArgumentNullException(nameof(logger));
     }
 
     public async IAsyncEnumerable<DecisionEvent> AnalyzeAsync(
@@ -46,30 +52,40 @@ public abstract class IntelligenceRoleBase : IIntelligenceRole
         activity?.SetTag("role.name", RoleName);
         activity?.SetTag("role.displayName", DisplayName);
         activity?.SetTag("persona", request.Persona.ToString());
-        
+
         var sequenceNumber = 0;
         var startTime = Stopwatch.GetTimestamp();
 
-        Logger.LogInformation(
+        _logger.LogInformation(
             "🔍 [{Role}] Starting analysis for decision {DecisionId} (Persona: {Persona})",
             DisplayName, decisionId, request.Persona);
 
         // Emit starting event
-        yield return CreateEvent(decisionId, request.Persona, AnalysisPhase.Starting, 
+        yield return CreateEvent(decisionId, request.Persona, AnalysisPhase.Starting,
             $"{DisplayName} is beginning analysis...", sequenceNumber++);
 
         yield return CreateEvent(decisionId, request.Persona, AnalysisPhase.Analyzing,
             $"Evaluating decision parameters for {personaContext.DisplayName} context...", sequenceNumber++);
 
-        var systemPrompt = BuildSystemPrompt(personaContext, request.UseSampleData);
-        var userPrompt = BuildUserPrompt(request, personaContext, priorInsights);
+        // Build prompt context for template rendering
+        var promptContext = new PromptContext
+        {
+            Persona = personaContext,
+            Request = request,
+            PriorInsights = priorInsights,
+            UseSampleData = request.UseSampleData,
+            BaselineAssumptions = _definition.BaselineAssumptions
+        };
 
-        Logger.LogDebug(
+        var systemPrompt = _templateEngine.RenderSystemPrompt(_definition.Prompts.System, promptContext);
+        var userPrompt = _templateEngine.RenderUserPrompt(_definition.Prompts.User, promptContext);
+
+        _logger.LogDebug(
             "[{Role}] Creating agent with {PriorInsightsCount} prior insights available",
             RoleName, priorInsights.Count);
 
-        // Create an AIAgent using Microsoft Agent Framework's CreateAIAgent pattern
-        var agent = AgentFactory.CreateAgent(
+        // Create an AIAgent using Microsoft Agent Framework
+        var agent = _agentFactory.CreateAgent(
             name: $"{RoleName}-agent",
             instructions: systemPrompt);
 
@@ -77,18 +93,18 @@ public abstract class IntelligenceRoleBase : IIntelligenceRole
         var eventQueue = new Queue<DecisionEvent>();
         Exception? streamingException = null;
 
-        // Process streaming response using AIAgent.RunStreamingAsync()
+        // Process streaming response
         var responseBuilder = new StringBuilder();
-        var insightBuilder = new StringBuilder(); // Accumulates text for meaningful insights
+        var insightBuilder = new StringBuilder();
         var tokenCount = 0;
-        const int MinInsightLength = 50; // Minimum chars before emitting an insight
-        
+        const int MinInsightLength = 50;
+
         try
         {
-            Logger.LogInformation(
+            _logger.LogInformation(
                 "⚡ [{Role}] Invoking AI agent for decision {DecisionId}",
                 DisplayName, decisionId);
-            
+
             await foreach (var update in agent.RunStreamingAsync(userPrompt, cancellationToken: cancellationToken))
             {
                 if (!string.IsNullOrEmpty(update.Text))
@@ -97,28 +113,25 @@ public abstract class IntelligenceRoleBase : IIntelligenceRole
                     insightBuilder.Append(update.Text);
                     tokenCount += update.Text.Split(' ', StringSplitOptions.RemoveEmptyEntries).Length;
 
-                    // Queue intermediate insights when we have a complete sentence of meaningful length
-                    if (insightBuilder.Length >= MinInsightLength && 
+                    // Queue intermediate insights when we have a complete sentence
+                    if (insightBuilder.Length >= MinInsightLength &&
                         (update.Text.EndsWith('.') || update.Text.EndsWith('!') || update.Text.EndsWith('?') || update.Text.Contains("\n\n")))
                     {
                         var insightText = insightBuilder.ToString().Trim();
-                        // Extract the last complete sentence or paragraph for cleaner display
                         var lastSentenceEnd = Math.Max(
                             insightText.LastIndexOf(". ", StringComparison.Ordinal),
                             Math.Max(insightText.LastIndexOf("! ", StringComparison.Ordinal),
                                      insightText.LastIndexOf("? ", StringComparison.Ordinal)));
-                        
+
                         if (lastSentenceEnd > MinInsightLength)
                         {
                             var cleanInsight = insightText[..(lastSentenceEnd + 1)].Trim();
-                            // Remove markdown formatting for cleaner display
                             cleanInsight = cleanInsight.Replace("**", "").Replace("##", "").Trim();
                             if (!string.IsNullOrWhiteSpace(cleanInsight))
                             {
                                 eventQueue.Enqueue(CreateEvent(decisionId, request.Persona, AnalysisPhase.Reporting,
                                     cleanInsight, sequenceNumber++));
                             }
-                            // Keep the remainder for the next insight
                             insightBuilder.Clear();
                             insightBuilder.Append(insightText[(lastSentenceEnd + 1)..]);
                         }
@@ -126,27 +139,27 @@ public abstract class IntelligenceRoleBase : IIntelligenceRole
                 }
             }
 
-            // Parse the final response and queue completion
+            // Parse the final response
             var finalResponse = responseBuilder.ToString();
             var insight = ParseInsight(finalResponse);
-            
+
             var elapsedMs = Stopwatch.GetElapsedTime(startTime).TotalMilliseconds;
             activity?.SetTag("analysis.duration_ms", elapsedMs);
             activity?.SetTag("analysis.token_count", tokenCount);
             activity?.SetTag("analysis.confidence", insight.Confidence);
 
-            Logger.LogInformation(
+            _logger.LogInformation(
                 "✅ [{Role}] Completed analysis for decision {DecisionId} in {ElapsedMs:F0}ms (Confidence: {Confidence:P0})",
                 DisplayName, decisionId, elapsedMs, insight.Confidence);
 
-            // Build the data dictionary, including any role-specific data from ParseInsight
+            // Build the data dictionary
             var eventData = new Dictionary<string, object>
             {
                 ["keyFindings"] = insight.KeyFindings,
                 ["fullAnalysis"] = finalResponse
             };
-            
-            // Merge any role-specific data (like verdict from ExecutiveRecommendation)
+
+            // Merge any role-specific data
             if (insight.Data != null)
             {
                 foreach (var (key, value) in insight.Data)
@@ -161,8 +174,8 @@ public abstract class IntelligenceRoleBase : IIntelligenceRole
         catch (Exception ex)
         {
             activity?.SetStatus(ActivityStatusCode.Error, ex.Message);
-            Logger.LogError(ex, 
-                "❌ [{Role}] Error in analysis for decision {DecisionId}: {ErrorMessage}", 
+            _logger.LogError(ex,
+                "❌ [{Role}] Error in analysis for decision {DecisionId}: {ErrorMessage}",
                 DisplayName, decisionId, ex.Message);
             streamingException = ex;
         }
@@ -181,16 +194,15 @@ public abstract class IntelligenceRoleBase : IIntelligenceRole
         }
     }
 
-    protected abstract string BuildSystemPrompt(PersonaContext persona, bool useSampleData);
-    
-    protected abstract string BuildUserPrompt(
-        DecisionRequest request, 
-        PersonaContext persona, 
-        IReadOnlyDictionary<string, RoleInsight> priorInsights);
-
     protected virtual RoleInsight ParseInsight(string response)
     {
-        // Default parsing - subclasses can override for structured extraction
+        // Special handling for executive_recommendation to extract verdict
+        if (RoleName == "executive_recommendation")
+        {
+            return ParseExecutiveInsight(response);
+        }
+
+        // Default parsing for all other roles
         var lines = response.Split('\n', StringSplitOptions.RemoveEmptyEntries);
         var findings = lines
             .Where(l => l.TrimStart().StartsWith('-') || l.TrimStart().StartsWith('•') || l.TrimStart().StartsWith("*"))
@@ -198,7 +210,6 @@ public abstract class IntelligenceRoleBase : IIntelligenceRole
             .Take(5)
             .ToArray();
 
-        // Extract confidence from response (look for patterns like "Confidence: 85%" or "**Confidence:** 78%")
         var confidence = ExtractConfidenceFromResponse(response);
 
         return new RoleInsight
@@ -210,18 +221,50 @@ public abstract class IntelligenceRoleBase : IIntelligenceRole
         };
     }
 
-    /// <summary>
-    /// Extracts confidence value from AI response text.
-    /// Looks for patterns like "Confidence: 85%", "**Confidence:** 78%", "confidence level: 0.82"
-    /// </summary>
+    private RoleInsight ParseExecutiveInsight(string response)
+    {
+        // Extract verdict from response
+        var verdict = "APPROVE";
+        if (response.Contains("DECLINE", StringComparison.OrdinalIgnoreCase))
+            verdict = "DECLINE";
+        else if (response.Contains("MODIFICATIONS", StringComparison.OrdinalIgnoreCase) ||
+                 response.Contains("WITH CHANGES", StringComparison.OrdinalIgnoreCase))
+            verdict = "APPROVE WITH MODIFICATIONS";
+
+        var lines = response.Split('\n', StringSplitOptions.RemoveEmptyEntries);
+        var findings = lines
+            .Where(l => l.TrimStart().StartsWith('-') || l.TrimStart().StartsWith('•') || l.TrimStart().StartsWith("*"))
+            .Select(l => l.TrimStart('-', '•', '*', ' '))
+            .Take(7)
+            .ToArray();
+
+        var summaryLine = lines.FirstOrDefault(l =>
+            l.Length > 50 &&
+            !l.StartsWith('#') &&
+            !l.StartsWith('-') &&
+            !l.StartsWith('•')) ?? $"Recommendation: {verdict}";
+
+        return new RoleInsight
+        {
+            RoleName = RoleName,
+            Summary = summaryLine.Trim(),
+            KeyFindings = findings.Length > 0 ? findings : [$"Verdict: {verdict}"],
+            Confidence = verdict == "APPROVE" ? 0.85 : verdict == "DECLINE" ? 0.80 : 0.75,
+            Data = new Dictionary<string, object>
+            {
+                ["verdict"] = verdict
+            }
+        };
+    }
+
     protected static double ExtractConfidenceFromResponse(string response)
     {
         // Pattern 1: "Confidence: XX%" or "**Confidence:** XX%"
         var percentMatch = System.Text.RegularExpressions.Regex.Match(
-            response, 
+            response,
             @"[Cc]onfidence[:\s*]+(\d{1,3})%",
             System.Text.RegularExpressions.RegexOptions.IgnoreCase);
-        
+
         if (percentMatch.Success && int.TryParse(percentMatch.Groups[1].Value, out var percentValue))
         {
             return Math.Clamp(percentValue / 100.0, 0.0, 1.0);
@@ -232,13 +275,13 @@ public abstract class IntelligenceRoleBase : IIntelligenceRole
             response,
             @"[Cc]onfidence[:\s\w]*?(\d?\.\d+)",
             System.Text.RegularExpressions.RegexOptions.IgnoreCase);
-        
+
         if (decimalMatch.Success && double.TryParse(decimalMatch.Groups[1].Value, out var decimalValue))
         {
             return Math.Clamp(decimalValue, 0.0, 1.0);
         }
 
-        // Pattern 3: Look for "high confidence", "moderate confidence", "low confidence"
+        // Pattern 3: Qualitative confidence
         if (System.Text.RegularExpressions.Regex.IsMatch(response, @"\b(very\s+)?high\s+confidence\b", System.Text.RegularExpressions.RegexOptions.IgnoreCase))
             return 0.90;
         if (System.Text.RegularExpressions.Regex.IsMatch(response, @"\bmoderate\s+confidence\b", System.Text.RegularExpressions.RegexOptions.IgnoreCase))
@@ -250,11 +293,11 @@ public abstract class IntelligenceRoleBase : IIntelligenceRole
         return 0.75;
     }
 
-    protected DecisionEvent CreateEvent(
-        string decisionId, 
-        RetailPersona persona, 
-        AnalysisPhase phase, 
-        string message, 
+    private DecisionEvent CreateEvent(
+        string decisionId,
+        RetailPersona persona,
+        AnalysisPhase phase,
+        string message,
         int sequenceNumber,
         double? confidence = null,
         Dictionary<string, object>? data = null)
@@ -272,27 +315,64 @@ public abstract class IntelligenceRoleBase : IIntelligenceRole
             Timestamp = DateTimeOffset.UtcNow
         };
     }
+}
 
-    protected static string FormatKpis(Dictionary<string, double> kpis)
+/// <summary>
+/// Factory for creating YAML-driven role instances from definitions.
+/// </summary>
+public interface IYamlRoleFactory
+{
+    /// <summary>
+    /// Creates all intelligence roles from loaded YAML definitions.
+    /// </summary>
+    IEnumerable<IIntelligenceRole> CreateAllRoles();
+
+    /// <summary>
+    /// Creates a specific role by name.
+    /// </summary>
+    IIntelligenceRole CreateRole(string roleName);
+}
+
+/// <summary>
+/// Factory implementation that creates YamlDrivenRole instances.
+/// </summary>
+public sealed class YamlRoleFactory : IYamlRoleFactory
+{
+    private readonly IAgentDefinitionLoader _definitionLoader;
+    private readonly IAgentFactory _agentFactory;
+    private readonly IPromptTemplateEngine _templateEngine;
+    private readonly ILoggerFactory _loggerFactory;
+
+    public YamlRoleFactory(
+        IAgentDefinitionLoader definitionLoader,
+        IAgentFactory agentFactory,
+        IPromptTemplateEngine templateEngine,
+        ILoggerFactory loggerFactory)
     {
-        return string.Join("\n", kpis.Select(kv => $"  - {kv.Key}: {kv.Value:F2}"));
+        _definitionLoader = definitionLoader;
+        _agentFactory = agentFactory;
+        _templateEngine = templateEngine;
+        _loggerFactory = loggerFactory;
     }
 
-    protected static string FormatPriorInsights(IReadOnlyDictionary<string, RoleInsight> insights)
+    public IEnumerable<IIntelligenceRole> CreateAllRoles()
     {
-        if (insights.Count == 0) return "No prior analysis available.";
-
-        var sb = new StringBuilder();
-        foreach (var (role, insight) in insights)
+        var definitions = _definitionLoader.GetAllDefinitions();
+        foreach (var (name, definition) in definitions.OrderBy(d => d.Value.WorkflowOrder))
         {
-            sb.AppendLine($"\n{role}:");
-            sb.AppendLine($"  Summary: {insight.Summary}");
-            sb.AppendLine($"  Key Findings:");
-            foreach (var finding in insight.KeyFindings.Take(3))
-            {
-                sb.AppendLine($"    - {finding}");
-            }
+            yield return CreateRoleFromDefinition(definition);
         }
-        return sb.ToString();
+    }
+
+    public IIntelligenceRole CreateRole(string roleName)
+    {
+        var definition = _definitionLoader.GetDefinition(roleName);
+        return CreateRoleFromDefinition(definition);
+    }
+
+    private YamlDrivenRole CreateRoleFromDefinition(AgentDefinition definition)
+    {
+        var logger = _loggerFactory.CreateLogger($"YamlDrivenRole.{definition.Name}");
+        return new YamlDrivenRole(definition, _agentFactory, _templateEngine, logger);
     }
 }

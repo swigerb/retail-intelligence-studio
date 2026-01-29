@@ -15,31 +15,32 @@ namespace RetailIntelligenceStudio.Tests.Integration;
 public class RolesApiEndpointTests
 {
     private readonly Mock<IAgentFactory> _mockAgentFactory;
+    private readonly IYamlRoleFactory _roleFactory;
 
     public RolesApiEndpointTests()
     {
         _mockAgentFactory = new Mock<IAgentFactory>();
+        
+        var testBasePath = GetAgentsBasePath();
+        var definitionLoader = new AgentDefinitionLoader(testBasePath, Mock.Of<ILogger<AgentDefinitionLoader>>());
+        var templateEngine = new PromptTemplateEngine();
+        
+        var loggerFactory = new Mock<ILoggerFactory>();
+        loggerFactory.Setup(f => f.CreateLogger(It.IsAny<string>()))
+            .Returns(Mock.Of<ILogger>());
+        
+        _roleFactory = new YamlRoleFactory(definitionLoader, _mockAgentFactory.Object, templateEngine, loggerFactory.Object);
     }
 
-    private T CreateRole<T>() where T : class, IIntelligenceRole
+    private static string GetAgentsBasePath()
     {
-        var loggerMock = new Mock<ILogger<T>>();
-        return (T)Activator.CreateInstance(typeof(T), _mockAgentFactory.Object, loggerMock.Object)!;
+        // YAML files are copied to test output directory
+        return AppContext.BaseDirectory;
     }
 
     private IIntelligenceRole[] CreateAllRoles()
     {
-        return new IIntelligenceRole[]
-        {
-            CreateRole<DecisionFramerRole>(),
-            CreateRole<ShopperInsightsRole>(),
-            CreateRole<DemandForecastingRole>(),
-            CreateRole<InventoryReadinessRole>(),
-            CreateRole<MarginImpactRole>(),
-            CreateRole<DigitalMerchandisingRole>(),
-            CreateRole<RiskComplianceRole>(),
-            CreateRole<ExecutiveRecommendationRole>()
-        };
+        return _roleFactory.CreateAllRoles().ToArray();
     }
 
     /// <summary>
@@ -110,7 +111,7 @@ public class RolesApiEndpointTests
     public void GetRoles_ResponseStructure_MatchesExpectedFormat()
     {
         // Arrange
-        var role = CreateRole<DecisionFramerRole>();
+        var role = _roleFactory.CreateRole("decision_framer");
 
         // Act - create the response object as the endpoint does
         var responseItem = new

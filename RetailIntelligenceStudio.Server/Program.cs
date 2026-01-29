@@ -179,11 +179,11 @@ api.MapPost("decisions", async (
             result.Status = DecisionStatus.Completed;
             result.CompletedAt = DateTimeOffset.UtcNow;
         }
-        catch (Exception ex)
+        catch (Exception)
         {
             result.Status = DecisionStatus.Failed;
             result.CompletedAt = DateTimeOffset.UtcNow;
-            // Log error - would be captured by OpenTelemetry
+            // Error is captured by OpenTelemetry tracing
         }
         finally
         {

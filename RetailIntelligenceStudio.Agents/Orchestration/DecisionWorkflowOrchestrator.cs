@@ -12,6 +12,7 @@ namespace RetailIntelligenceStudio.Agents.Orchestration;
 /// Orchestrates the decision evaluation workflow using a fan-out/fan-in pattern.
 /// Executes Decision Framer first, then runs 6 analysis roles in parallel,
 /// and finally synthesizes results with Executive Recommendation.
+/// Role definitions are loaded from YAML configuration files.
 /// </summary>
 public sealed class DecisionWorkflowOrchestrator
 {
@@ -21,7 +22,8 @@ public sealed class DecisionWorkflowOrchestrator
     private readonly IPersonaCatalog _personaCatalog;
     private readonly ILogger<DecisionWorkflowOrchestrator> _logger;
 
-    // Role execution order based on YAML workflow definition
+    // Role execution order - roles are loaded from YAML definitions
+    // These constants define the workflow structure
     private const string FramerRole = "decision_framer";
     private static readonly string[] ParallelAnalysisRoles =
     [
@@ -45,7 +47,10 @@ public sealed class DecisionWorkflowOrchestrator
         _personaCatalog = personaCatalog;
         _logger = logger;
         
-        _logger.LogInformation("🧠 Orchestrator initialized with {RoleCount} intelligence roles", _roles.Count);
+        _logger.LogInformation(
+            "🧠 Orchestrator initialized with {RoleCount} YAML-driven intelligence roles: [{RoleNames}]", 
+            _roles.Count,
+            string.Join(", ", _roles.Keys.OrderBy(k => _roles[k].WorkflowOrder)));
     }
 
     /// <summary>

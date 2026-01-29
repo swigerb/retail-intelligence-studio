@@ -32,4 +32,11 @@
     <Using Include="Xunit" />
   </ItemGroup>
 
+  <!-- Copy YAML agent definitions from Agents project for testing -->
+  <ItemGroup>
+    <Content Include="..\RetailIntelligenceStudio.Agents\Workflows\**\*.yaml" Link="Workflows\%(RecursiveDir)%(Filename)%(Extension)">
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+    </Content>
+  </ItemGroup>
+
 </Project>

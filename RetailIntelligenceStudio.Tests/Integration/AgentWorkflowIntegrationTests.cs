@@ -17,7 +17,7 @@ namespace RetailIntelligenceStudio.Tests.Integration;
 
 /// <summary>
 /// End-to-end integration tests for the complete agent workflow.
-/// Tests the full communication flow through all 8 intelligence roles.
+/// Tests the full communication flow through all 8 YAML-driven intelligence roles.
 /// </summary>
 public class AgentWorkflowIntegrationTests
 {
@@ -25,6 +25,7 @@ public class AgentWorkflowIntegrationTests
     private readonly IDecisionStore _decisionStore;
     private readonly IPersonaCatalog _personaCatalog;
     private readonly Mock<ILogger<DecisionWorkflowOrchestrator>> _mockOrchestratorLogger;
+    private readonly IYamlRoleFactory _roleFactory;
 
     public AgentWorkflowIntegrationTests()
     {
@@ -33,7 +34,24 @@ public class AgentWorkflowIntegrationTests
         _personaCatalog = new PersonaCatalog();
         _mockOrchestratorLogger = new Mock<ILogger<DecisionWorkflowOrchestrator>>();
         
+        // Setup YAML-driven role factory
+        var testBasePath = GetAgentsBasePath();
+        var definitionLoader = new AgentDefinitionLoader(testBasePath, Mock.Of<ILogger<AgentDefinitionLoader>>());
+        var templateEngine = new PromptTemplateEngine();
+        
+        var loggerFactory = new Mock<ILoggerFactory>();
+        loggerFactory.Setup(f => f.CreateLogger(It.IsAny<string>()))
+            .Returns(Mock.Of<ILogger>());
+        
+        _roleFactory = new YamlRoleFactory(definitionLoader, _mockAgentFactory.Object, templateEngine, loggerFactory.Object);
+        
         SetupMockAgentFactory();
+    }
+
+    private static string GetAgentsBasePath()
+    {
+        // YAML files are copied to test output directory
+        return AppContext.BaseDirectory;
     }
 
     private void SetupMockAgentFactory()
@@ -523,16 +541,6 @@ Analysis has been conducted based on available data.
 
     private IEnumerable<IIntelligenceRole> CreateAllIntelligenceRoles()
     {
-        return new List<IIntelligenceRole>
-        {
-            new DecisionFramerRole(_mockAgentFactory.Object, Mock.Of<ILogger<DecisionFramerRole>>()),
-            new ShopperInsightsRole(_mockAgentFactory.Object, Mock.Of<ILogger<ShopperInsightsRole>>()),
-            new DemandForecastingRole(_mockAgentFactory.Object, Mock.Of<ILogger<DemandForecastingRole>>()),
-            new InventoryReadinessRole(_mockAgentFactory.Object, Mock.Of<ILogger<InventoryReadinessRole>>()),
-            new MarginImpactRole(_mockAgentFactory.Object, Mock.Of<ILogger<MarginImpactRole>>()),
-            new DigitalMerchandisingRole(_mockAgentFactory.Object, Mock.Of<ILogger<DigitalMerchandisingRole>>()),
-            new RiskComplianceRole(_mockAgentFactory.Object, Mock.Of<ILogger<RiskComplianceRole>>()),
-            new ExecutiveRecommendationRole(_mockAgentFactory.Object, Mock.Of<ILogger<ExecutiveRecommendationRole>>())
-        };
+        return _roleFactory.CreateAllRoles();
     }
 }

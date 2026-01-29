@@ -14,19 +14,34 @@ public static class ServiceCollectionExtensions
 {
     /// <summary>
     /// Adds all intelligence roles and the workflow orchestrator to the service collection.
+    /// Uses YAML-based agent definitions for versionable configuration.
     /// Requires IAgentFactory to be registered separately.
     /// </summary>
-    public static IServiceCollection AddRetailIntelligenceAgents(this IServiceCollection services)
+    /// <param name="services">The service collection.</param>
+    /// <param name="agentsBasePath">Base path where the Workflows/Agents YAML files are located. 
+    /// Defaults to AppContext.BaseDirectory.</param>
+    public static IServiceCollection AddRetailIntelligenceAgents(
+        this IServiceCollection services, 
+        string? agentsBasePath = null)
     {
-        // Register all intelligence roles
-        services.AddSingleton<IIntelligenceRole, DecisionFramerRole>();
-        services.AddSingleton<IIntelligenceRole, ShopperInsightsRole>();
-        services.AddSingleton<IIntelligenceRole, DemandForecastingRole>();
-        services.AddSingleton<IIntelligenceRole, InventoryReadinessRole>();
-        services.AddSingleton<IIntelligenceRole, MarginImpactRole>();
-        services.AddSingleton<IIntelligenceRole, DigitalMerchandisingRole>();
-        services.AddSingleton<IIntelligenceRole, RiskComplianceRole>();
-        services.AddSingleton<IIntelligenceRole, ExecutiveRecommendationRole>();
+        var basePath = agentsBasePath ?? AppContext.BaseDirectory;
+
+        // Register infrastructure services
+        services.AddSingleton<IAgentDefinitionLoader>(sp =>
+        {
+            var logger = sp.GetRequiredService<ILogger<AgentDefinitionLoader>>();
+            return new AgentDefinitionLoader(basePath, logger);
+        });
+
+        services.AddSingleton<IPromptTemplateEngine, PromptTemplateEngine>();
+        services.AddSingleton<IYamlRoleFactory, YamlRoleFactory>();
+
+        // Register all intelligence roles from YAML definitions
+        services.AddSingleton<IEnumerable<IIntelligenceRole>>(sp =>
+        {
+            var factory = sp.GetRequiredService<IYamlRoleFactory>();
+            return factory.CreateAllRoles().ToList();
+        });
 
         // Register workflow orchestrator
         services.AddSingleton<DecisionWorkflowOrchestrator>();
