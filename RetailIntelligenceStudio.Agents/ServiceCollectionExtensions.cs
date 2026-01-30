@@ -51,22 +51,40 @@ public static class ServiceCollectionExtensions
 
     /// <summary>
     /// Adds the Azure OpenAI agent factory using the Microsoft Agent Framework.
+    /// Supports both API key and DefaultAzureCredential (Entra ID) authentication.
+    /// </summary>
+    /// <param name="services">The service collection.</param>
+    /// <param name="options">Azure OpenAI configuration options.</param>
+    public static IServiceCollection AddAzureOpenAIAgentFactory(
+        this IServiceCollection services,
+        AzureOpenAIOptions options)
+    {
+        services.AddSingleton<IAgentFactory>(sp =>
+        {
+            var loggerFactory = sp.GetRequiredService<ILoggerFactory>();
+            return new AzureOpenAIAgentFactory(options, loggerFactory);
+        });
+
+        return services;
+    }
+
+    /// <summary>
+    /// Adds the Azure OpenAI agent factory using the Microsoft Agent Framework.
     /// </summary>
     /// <param name="services">The service collection.</param>
     /// <param name="endpoint">Azure OpenAI endpoint URL.</param>
     /// <param name="deploymentName">The model deployment name.</param>
+    [Obsolete("Use AddAzureOpenAIAgentFactory(AzureOpenAIOptions) instead for API key support.")]
     public static IServiceCollection AddAzureOpenAIAgentFactory(
         this IServiceCollection services,
         string endpoint,
         string deploymentName)
     {
-        services.AddSingleton<IAgentFactory>(sp =>
-        {
-            var loggerFactory = sp.GetRequiredService<ILoggerFactory>();
-            return new AzureOpenAIAgentFactory(endpoint, deploymentName, loggerFactory);
+        return services.AddAzureOpenAIAgentFactory(new AzureOpenAIOptions 
+        { 
+            Endpoint = endpoint, 
+            DeploymentName = deploymentName 
         });
-
-        return services;
     }
 
     /// <summary>

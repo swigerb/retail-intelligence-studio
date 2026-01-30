@@ -154,6 +154,7 @@ sequenceDiagram
 - [.NET 10 SDK](https://dotnet.microsoft.com/download)
 - [Node.js 20+](https://nodejs.org/)
 - [Docker Desktop](https://www.docker.com/products/docker-desktop/) (optional, for containerized deployment)
+- [Azure CLI](https://docs.microsoft.com/cli/azure/install-azure-cli) (optional, for Azure OpenAI with Entra ID authentication)
 
 ### Running Locally
 
@@ -177,22 +178,102 @@ sequenceDiagram
    - **Aspire Dashboard**: https://localhost:17204 (login token shown in console)
    - **Frontend**: The URL will be shown in the Aspire Dashboard
 
+> **Note**: Without Azure OpenAI configuration, the application runs with local mock agents that return simulated responses. This is great for UI development and testing the workflow.
+
 ### Configuration
 
-#### Azure OpenAI (Optional)
+## 🔐 Azure OpenAI Setup
 
-To use Azure OpenAI instead of the local mock agents, configure these settings in `RetailIntelligenceStudio.Server/appsettings.json`:
+The application supports two authentication methods for Azure OpenAI:
 
-```json
-{
-  "AzureOpenAI": {
-    "Endpoint": "https://your-resource.openai.azure.com/",
-    "DeploymentName": "gpt-4o"
-  }
-}
-```
+### Option 1: API Key Authentication (Simplest)
 
-The application will automatically use `DefaultAzureCredential` for authentication.
+1. **Get your Azure OpenAI credentials** from the [Azure Portal](https://portal.azure.com):
+   - Navigate to your Azure OpenAI resource
+   - Go to **Keys and Endpoint**
+   - Copy the **Endpoint** and one of the **Keys**
+
+2. **Configure the application** - Create or edit `RetailIntelligenceStudio.Server/appsettings.Development.json`:
+
+   ```json
+   {
+     "AzureOpenAI": {
+       "Endpoint": "https://your-resource.openai.azure.com/",
+       "DeploymentName": "gpt-4o",
+       "ApiKey": "your-api-key-here"
+     }
+   }
+   ```
+
+   > ⚠️ **Security Note**: Never commit API keys to source control. The `appsettings.Development.json` file is included in `.gitignore`.
+
+3. **Alternative: Use environment variables**:
+   ```bash
+   # PowerShell
+   $env:AzureOpenAI__Endpoint = "https://your-resource.openai.azure.com/"
+   $env:AzureOpenAI__DeploymentName = "gpt-4o"
+   $env:AzureOpenAI__ApiKey = "your-api-key-here"
+   
+   # Bash
+   export AzureOpenAI__Endpoint="https://your-resource.openai.azure.com/"
+   export AzureOpenAI__DeploymentName="gpt-4o"
+   export AzureOpenAI__ApiKey="your-api-key-here"
+   ```
+
+### Option 2: Entra ID Authentication (Recommended for Production)
+
+This method uses `DefaultAzureCredential` which supports multiple authentication flows including Azure CLI, Visual Studio, and managed identities.
+
+1. **Login to Azure CLI**:
+   ```bash
+   az login
+   ```
+
+2. **Ensure you have the required RBAC role** on your Azure OpenAI resource:
+   - Role: **Cognitive Services OpenAI User** (or Contributor)
+   - Assign via Azure Portal or CLI:
+     ```bash
+     az role assignment create \
+       --role "Cognitive Services OpenAI User" \
+       --assignee your-email@domain.com \
+       --scope /subscriptions/{subscription-id}/resourceGroups/{resource-group}/providers/Microsoft.CognitiveServices/accounts/{openai-resource-name}
+     ```
+
+3. **Configure the endpoint** (no API key needed):
+   ```json
+   {
+     "AzureOpenAI": {
+       "Endpoint": "https://your-resource.openai.azure.com/",
+       "DeploymentName": "gpt-4o"
+     }
+   }
+   ```
+
+### Azure OpenAI Requirements
+
+| Requirement | Details |
+|-------------|---------|
+| **Model Deployment** | You need a deployed model (e.g., `gpt-4o`, `gpt-4`, `gpt-35-turbo`) in your Azure OpenAI resource |
+| **API Version** | The application uses the latest Azure OpenAI SDK which handles API versioning automatically |
+| **Region** | Ensure your Azure OpenAI resource is in a region that supports your chosen model |
+
+### Troubleshooting
+
+| Error | Cause | Solution |
+|-------|-------|----------|
+| `400 BadRequest` | Invalid endpoint, missing deployment, or auth failure | Verify endpoint URL and deployment name exist |
+| `401 Unauthorized` | Invalid API key or missing RBAC permissions | Check API key or run `az login` and verify RBAC role |
+| `403 Forbidden` | Subscription/resource access denied | Verify your account has access to the Azure OpenAI resource |
+| `404 NotFound` | Deployment name doesn't exist | Verify the model deployment name in Azure Portal |
+| `DefaultAzureCredential` error | Not logged into Azure CLI | Run `az login` to authenticate |
+
+### Configuration Reference
+
+| Setting | Environment Variable | Description | Required |
+|---------|---------------------|-------------|----------|
+| `AzureOpenAI:Endpoint` | `AzureOpenAI__Endpoint` | Azure OpenAI endpoint URL | Yes |
+| `AzureOpenAI:DeploymentName` | `AzureOpenAI__DeploymentName` | Model deployment name | No (default: `gpt-4o`) |
+| `AzureOpenAI:ApiKey` | `AzureOpenAI__ApiKey` | API key for authentication | No (uses Entra ID if not set) |
 
 ## 📁 Project Structure
 

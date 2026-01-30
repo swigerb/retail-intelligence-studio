@@ -1,3 +1,4 @@
+using RetailIntelligenceStudio.Agents.Infrastructure;
 using System.Text.Json;
 using System.Text.Json.Serialization;
 using RetailIntelligenceStudio.Agents;
@@ -42,20 +43,39 @@ builder.Services.AddSpaStaticFiles(config =>
 });
 
 // Configure Agent Factory using Microsoft Agent Framework
-var config = builder.Configuration;
-var endpoint = config["AzureOpenAI:Endpoint"];
-var deploymentName = config["AzureOpenAI:DeploymentName"] ?? "gpt-4o";
+var azureOpenAIOptions = new AzureOpenAIOptions();
+builder.Configuration.GetSection(AzureOpenAIOptions.SectionName).Bind(azureOpenAIOptions);
+
+// Log the configuration status
+var startupLoggerFactory = LoggerFactory.Create(b => b.AddConsole());
+var configLogger = startupLoggerFactory.CreateLogger("AzureOpenAI.Configuration");
 
 // Check if Azure OpenAI is configured with a real endpoint
-if (string.IsNullOrEmpty(endpoint) || endpoint.Contains("your-resource"))
+var validationErrors = azureOpenAIOptions.Validate();
+if (validationErrors.Count > 0)
 {
+    configLogger.LogWarning(
+        "⚠️ Azure OpenAI not configured or has invalid configuration. Using local mock agents.\\n" +
+        "To use Azure OpenAI, configure the following in appsettings.json or environment variables:\\n" +
+        "  - AzureOpenAI:Endpoint (required): Your Azure OpenAI endpoint URL\\n" +
+        "  - AzureOpenAI:DeploymentName (optional, default: gpt-4o): Your model deployment name\\n" +
+        "  - AzureOpenAI:ApiKey (optional): API key for authentication (otherwise uses Azure CLI/Entra ID)\\n" +
+        "Issues found: {ValidationErrors}", 
+        string.Join("; ", validationErrors));
+    
     // Use local agent factory for development without Azure OpenAI
     builder.Services.AddLocalAgentFactory();
 }
 else
 {
+    configLogger.LogInformation(
+        "✅ Azure OpenAI configured. Endpoint: {Endpoint}, Deployment: {DeploymentName}, Auth: {AuthType}",
+        azureOpenAIOptions.Endpoint,
+        azureOpenAIOptions.DeploymentName,
+        azureOpenAIOptions.UseApiKeyAuth ? "API Key" : "DefaultAzureCredential (Entra ID)");
+    
     // Use Azure OpenAI with Microsoft Agent Framework
-    builder.Services.AddAzureOpenAIAgentFactory(endpoint, deploymentName);
+    builder.Services.AddAzureOpenAIAgentFactory(azureOpenAIOptions);
 }
 
 // Register Core services - In-memory stores for demo
