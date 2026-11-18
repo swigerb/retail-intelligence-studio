@@ -82,7 +82,7 @@ public class OpenTelemetryLoggingTests
 
         // Assert
         exporter.ExportedLogs.Should().NotBeEmpty("logs should be exported to OpenTelemetry");
-        exporter.ExportedLogs.Should().HaveCountGreaterOrEqualTo(3);
+        exporter.ExportedLogs.Should().HaveCountGreaterThanOrEqualTo(3);
         
         var infoLog = exporter.ExportedLogs.FirstOrDefault(l => l.LogLevel == LogLevel.Information);
         infoLog.Should().NotBeNull();
