@@ -1,0 +1,59 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+permissions:
+  contents: read
+
+jobs:
+  backend-tests:
+    name: Backend build and tests
+    runs-on: ubuntu-latest
+    env:
+      DOTNET_CLI_WORKLOAD_UPDATE_NOTIFY_DISABLE: "true"
+      DOTNET_SKIP_FIRST_TIME_EXPERIENCE: "true"
+      DOTNET_NUGET_SIGNATURE_VERIFICATION: "true"
+      NUGET_PACKAGES: ${{ github.workspace }}/.ci/nuget/packages
+      NUGET_HTTP_CACHE_PATH: ${{ github.workspace }}/.ci/nuget/http
+    steps:
+      - name: Checkout
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      - name: Setup .NET
+        uses: actions/setup-dotnet@0f4a354dd5547a28c70b7853dbd95d5b67886e73 # v6.1.0
+        with:
+          global-json-file: global.json
+
+      - name: Setup checksum-pinned Aspire 17 CLI bundle
+        run: bash scripts/install-aspire-ci.sh "$GITHUB_WORKSPACE/.ci/aspire"
+
+      - name: Show configured NuGet sources
+        run: dotnet nuget list source --format Detailed
+
+      - name: Restore backend projects from configured sources into the isolated cache
+        run: |
+          dotnet restore RetailIntelligenceStudio.AppHost/RetailIntelligenceStudio.AppHost.csproj --force --no-http-cache -m:1 /nodeReuse:false
+          dotnet restore RetailIntelligenceStudio.Server/RetailIntelligenceStudio.Server.csproj --force --no-http-cache -m:1 /nodeReuse:false
+          dotnet restore RetailIntelligenceStudio.Tests/RetailIntelligenceStudio.Tests.csproj --force --no-http-cache -m:1 /nodeReuse:false
+
+      - name: Verify restored Aspire 17 application package signatures and sources
+        run: python3 scripts/verify-aspire-packages.py RetailIntelligenceStudio.AppHost/obj/project.assets.json
+
+      - name: Build Aspire 17 AppHost and backend
+        run: |
+          dotnet build RetailIntelligenceStudio.AppHost/RetailIntelligenceStudio.AppHost.csproj --configuration Release --no-restore --no-incremental -m:1 /nodeReuse:false
+          dotnet build RetailIntelligenceStudio.Server/RetailIntelligenceStudio.Server.csproj --configuration Release --no-restore --no-incremental -m:1 /nodeReuse:false
+
+      - name: Run existing backend tests
+        run: dotnet test RetailIntelligenceStudio.Tests/RetailIntelligenceStudio.Tests.csproj --configuration Release --no-restore -m:1 /nodeReuse:false --logger trx --results-directory ./TestResults --collect:"XPlat Code Coverage"
+
+      - name: Upload test results and coverage
+        if: always()
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: backend-testresults
+          path: TestResults/**

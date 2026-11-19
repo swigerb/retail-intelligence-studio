@@ -1,14 +1,16 @@
 var builder = DistributedApplication.CreateBuilder(args);
 
 // Add the .NET backend server
-var server = builder.AddProject<Projects.RetailIntelligenceStudio_Server>("server")
+var server = builder.AddDotnetProject("server", "../RetailIntelligenceStudio.Server/RetailIntelligenceStudio.Server.csproj")
     .WithExternalHttpEndpoints();
 
 // Add the React/Vite frontend - configure proxy to use Aspire service discovery
-var webfrontend = builder.AddNpmApp("webfrontend", "../frontend", "dev")
+var webfrontend = builder.AddJavaScriptApp("webfrontend", "../frontend")
+    .WithRunScript("dev")
+    .WithBuildScript("build")
+    .WithNpm(install: false)
     .WithReference(server)
     .WithHttpEndpoint(port: 5173, env: "PORT")
-    .WithExternalHttpEndpoints()
-    .PublishAsDockerFile();
+    .WithExternalHttpEndpoints();
 
 builder.Build().Run();
